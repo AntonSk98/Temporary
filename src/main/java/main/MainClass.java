@@ -1,16 +1,14 @@
 package main;
 
-import modicio.core.ModelElement;
-import modicio.core.TimeIdentity;
-import modicio.core.TypeHandle;
-import modicio.core.api.*;
+import modicio.core.*;
 import modicio.core.rules.api.AttributeRuleJ;
-import modicio.nativelang.defaults.api.SimpleDefinitionVerifierJ;
-import modicio.nativelang.defaults.api.SimpleMapRegistryJ;
-import modicio.nativelang.defaults.api.SimpleModelVerifierJ;
-import modicio.verification.api.DefinitionVerifierJ;
-import modicio.verification.api.ModelVerifierJ;
+import modicio.nativelang.defaults.SimpleDefinitionVerifier;
+import modicio.nativelang.defaults.SimpleMapRegistry;
+import modicio.nativelang.defaults.SimpleModelVerifier;
+import modicio.verification.DefinitionVerifier;
+import modicio.verification.ModelVerifier;
 import scala.Option;
+import scala.Some;
 import scala.concurrent.Future;
 import scala.jdk.javaapi.FutureConverters;
 import scala.jdk.javaapi.OptionConverters;
@@ -19,14 +17,15 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
+
 public class MainClass {
 
-    private static DefinitionVerifierJ definitionVerifierJ;
-    private static ModelVerifierJ modelVerifierJ;
-    private static TypeFactoryJ typeFactoryJ;
+    private static DefinitionVerifier definitionVerifier;
+    private static ModelVerifier modelVerifier;
+    private static TypeFactory typeFactory;
 
-    private static InstanceFactoryJ instanceFactoryJ;
-    private static RegistryJ registryJ;
+    private static InstanceFactory instanceFactory;
+    private static Registry registry;
 
     public static void main(String[] args) {
         try {
@@ -45,56 +44,56 @@ public class MainClass {
 
     private static void createProjectInstance() throws ExecutionException, InterruptedException {
         // create Instance of a Project
-        String createdInstanceId = instanceFactoryJ.newInstanceJ("Project").get().getInstanceIdJ();
-        DeepInstanceJ deepInstance = registryJ.getJ(createdInstanceId).get().get();
-        deepInstance.unfoldJ().get();
-        deepInstance.assignDeepValueJ("name", "Local attribute - will not be saved");
-        deepInstance.assignDeepValueJ("responsible", "Local attribute - will not be saved");
-        deepInstance.assignDeepValueJ("started", "Local attribute - will not be saved");
-        deepInstance.commitJ().get();
+        String createdInstanceId = future(instanceFactory.newInstance("Project")).get().getInstanceId();
+        DeepInstance deepInstance = future(registry.get(createdInstanceId)).get().get();
+        future(deepInstance.unfold()).get();
+        deepInstance.assignDeepValue("name", "Local attribute - will not be saved");
+        deepInstance.assignDeepValue("responsible", "Local attribute - will not be saved");
+        deepInstance.assignDeepValue("started", "Local attribute - will not be saved");
+        //deepInstance.commitJ().get();
 
         System.out.println("Attribute values updated...");
 
         //checking it
-        DeepInstanceJ deepInstanceJ = registryJ.getJ(createdInstanceId).get().get();
-        deepInstanceJ.unfoldJ().get();
+        DeepInstance deepInstanceJ = future(registry.get(createdInstanceId)).get().get();
+        future(deepInstanceJ.unfold()).get();
         var attributeValuesMap = deepInstanceJ.getDeepAttributes();
         System.out.println(attributeValuesMap);
     }
 
     private static void setUpModicio() {
-        definitionVerifierJ = new SimpleDefinitionVerifierJ();
-        modelVerifierJ = new SimpleModelVerifierJ();
-        typeFactoryJ = new TypeFactoryJ(definitionVerifierJ, modelVerifierJ);
-        instanceFactoryJ = new InstanceFactoryJ(definitionVerifierJ, modelVerifierJ);
-        registryJ = new SimpleMapRegistryJ(typeFactoryJ, instanceFactoryJ);
+        definitionVerifier = new SimpleDefinitionVerifier();
+        modelVerifier = new SimpleModelVerifier();
+        typeFactory = new TypeFactory(definitionVerifier, modelVerifier);
+        instanceFactory = new InstanceFactory(definitionVerifier, modelVerifier);
+        registry = new SimpleMapRegistry(typeFactory, instanceFactory);
 
-        typeFactoryJ.setRegistryJ(registryJ);
-        instanceFactoryJ.setRegistryJ(registryJ);
+        typeFactory.setRegistry(registry);
+        instanceFactory.setRegistry(registry);
     }
 
     private static void createRootElement() throws ExecutionException, InterruptedException {
-        CompletableFuture<TypeHandleJ> root = typeFactoryJ.newTypeJ(
+        CompletableFuture<TypeHandle> root = future(typeFactory.newType(
                 ModelElement.ROOT_NAME(),
                 ModelElement.REFERENCE_IDENTITY(),
                 true,
-                Optional.of(TimeIdentity.create()));
-        CompletableFuture<Object> typeFuture = registryJ.setType(root.get());
+                new Some<>((TimeIdentity.create()))));
+        CompletableFuture<Object> typeFuture = future(registry.setType(root.get(), false));
         typeFuture.get();
     }
 
     private static void createProjectType() throws ExecutionException, InterruptedException {
-        CompletableFuture<TypeHandleJ> type = typeFactoryJ.newTypeJ("Project", ModelElement.REFERENCE_IDENTITY(), false);
+        CompletableFuture<TypeHandle> type = future(typeFactory.newType("Project", ModelElement.REFERENCE_IDENTITY(), false, Option.empty()));
         // enforce synchronous execution
-        registryJ.setType(type.get()).get();
-        TypeHandle typeHandle = toCompletableFuture(registryJ.getRegistry().getType("Project", ModelElement.REFERENCE_IDENTITY())).get().get();
-        toCompletableFuture(typeHandle.unfold()).get();
+        future(registry.setType(type.get(), false)).get();
+        TypeHandle typeHandle = future(registry.getType("Project", ModelElement.REFERENCE_IDENTITY())).get().get();
+        future(typeHandle.unfold()).get();
         typeHandle.applyRule(AttributeRuleJ.create("name", "String", false, Option.empty()));
         typeHandle.applyRule(AttributeRuleJ.create("responsible", "String", false, Option.empty()));
         typeHandle.applyRule(AttributeRuleJ.create("started", "String", false, Option.empty()));
     }
 
-    private static  <T> CompletableFuture<T> toCompletableFuture(Future<T> future) {
+    private static  <T> CompletableFuture<T> future(Future<T> future) {
         return FutureConverters.asJava(future).toCompletableFuture();
     }
 
